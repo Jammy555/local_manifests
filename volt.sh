@@ -11,10 +11,10 @@ ZIP_PASSWORD_HASH=$(echo "ZDhkMGFkNDQxNDY0YTYxOWRmMzk4ZjhjZDRjNDZjMTE2YzQ4ZWQ4MG
 
 # --- Build Information ---
 DEVICE_CODE="lemonade"
-BUILD_TARGET="Voltage"
+BUILD_TARGET="Lunaris"
 ANDROID_VERSION="16"
-MANIFEST_URL="https://github.com/Jammy555/manifest.git"
-MANIFEST_BRANCH="16.2"
+MANIFEST_URL="https://github.com/Jammy555/android.git"
+MANIFEST_BRANCH="16.2" # Make sure Lunaris actually uses 16.2!
 
 # --- Shell Configuration ---
 export TZ="Asia/Kolkata"
@@ -45,7 +45,7 @@ update_tg_status() {
     local S=$((DURATION%60))
     local DURATION_FMT=$(printf "%02d hrs, %02d mins, %02d secs" $H $M $S)
 
-    local message="⚙️ <b>VoltageOS Build Monitor</b>
+    local message="⚙️ <b>LunarisOS Build Monitor</b>
 
 • <b>Device:</b> ${DEVICE_CODE}
 • <b>Android:</b> ${ANDROID_VERSION}
@@ -128,8 +128,11 @@ smart_clone() {
 start_build_process() {
     
     # --- STEP 1: INITIALIZE & SYNC ---
+    update_tg_status "Syncing Sources 🔄" "⏳ Cleaning old manifest state..."
+    
+    rm -rf .repo/manifests .repo/manifests.git .repo/manifest.xml .repo/local_manifests
+    
     update_tg_status "Syncing Sources 🔄" "⏳ Running repo init..."
-    rm -rf .repo/local_manifests
     repo init --depth=1 --no-repo-verify -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --git-lfs || { update_tg_status "Syncing Sources 🔄" "❌ Failed at repo init"; exit 1; }
     
     update_tg_status "Syncing Sources 🔄" "⏳ Running resync.sh..."
@@ -139,9 +142,9 @@ start_build_process() {
 
     # --- STEP 2: CLONE OR UPDATE DEVICE TREES ---
     smart_clone "https://github.com/Jammy555/android_kernel_oneplus_sm8350.git" "VOS-t" "./kernel/oneplus/sm8350" "kernel"
-    smart_clone "https://github.com/Jammy555/android_device_oneplus_lemonade.git" "VOS-t" "./device/oneplus/lemonade" "device tree"
-    smart_clone "https://github.com/Jammy555/android_device_oneplus_sm8350-common.git" "VOS-t" "./device/oneplus/sm8350-common" "common tree"
-    smart_clone "https://github.com/Jammy555/hardware_oplus.git" "VOS-t" "./hardware/oplus" "hardware"
+    smart_clone "https://github.com/Jammy555/android_device_oneplus_lemonade.git" "LUN" "./device/oneplus/lemonade" "device tree"
+    smart_clone "https://github.com/Jammy555/android_device_oneplus_sm8350-common.git" "libperfmgr" "./device/oneplus/sm8350-common" "common tree"
+    smart_clone "https://github.com/Jammy555/hardware_oplus.git" "libperfmgr" "./hardware/oplus" "hardware"
     smart_clone "https://github.com/Jammy555/vendor_oneplus_lemonade.git" "VOS-t" "./vendor/oneplus/lemonade" "vendor lemonade"
     smart_clone "https://github.com/Jammy555/vendor_oneplus_sm8350-common.git" "Lun" "./vendor/oneplus/sm8350-common" "vendor common"
     smart_clone "https://github.com/Jammy555/vendor_oplus_camera.git" "16" "./vendor/oplus/camera" "oplus camera"
@@ -152,7 +155,7 @@ start_build_process() {
     # --- STEP 3: ENVIRONMENT SETUP & CLEANUP ---
     update_tg_status "Environment Setup 🛠" "⏳ Running lunch command..."
     . build/envsetup.sh
-    lunch voltage_lemonade-bp4a-user || { update_tg_status "Environment Setup 🛠" "❌ Failed at lunch command"; exit 1; }
+    lunch lineage_lemonade-bp4a-user || { update_tg_status "Environment Setup 🛠" "❌ Failed at lunch command"; exit 1; }
 
     # Conditional logic based on how the script was called
     if [[ "$BUILD_FLAG" == "clean" ]]; then
