@@ -27,6 +27,9 @@ START_TIME=$(date +%s)
 START_TIME_FMT=$(date '+%Y-%m-%d %H:%M:%S %Z')
 COMPLETED_STEPS=""
 
+# Capture the first argument passed to the script (e.g., "clean")
+BUILD_FLAG="$1"
+
 # =========================================================
 # TELEGRAM FUNCTIONS
 # =========================================================
@@ -35,7 +38,6 @@ update_tg_status() {
     local current_step="$1"
     local status_text="$2"
     
-    # Calculate duration
     local CURRENT_TIME=$(date +%s)
     local DURATION=$((CURRENT_TIME - START_TIME))
     local H=$((DURATION/3600))
@@ -43,7 +45,6 @@ update_tg_status() {
     local S=$((DURATION%60))
     local DURATION_FMT=$(printf "%02d hrs, %02d mins, %02d secs" $H $M $S)
 
-    # Construct the message string
     local message="⚙️ <b>VoltageOS Build Monitor</b>
 
 • <b>Device:</b> ${DEVICE_CODE}
@@ -55,7 +56,6 @@ update_tg_status() {
 <b>Build Progress:</b>
 ${COMPLETED_STEPS}"
 
-    # Append current step if provided
     if [ -n "$current_step" ]; then
         message="${message}👉 <b>${current_step}:</b> ${status_text}"
     fi
@@ -80,7 +80,6 @@ ${COMPLETED_STEPS}"
 
 mark_step_complete() {
     local step_name="$1"
-    # Append to the permanent checklist with a newline
     COMPLETED_STEPS="${COMPLETED_STEPS}✅ ${step_name}
 "
 }
@@ -151,35 +150,36 @@ start_build_process() {
     mark_step_complete "Trees Cloned & Updated"
 
     # --- STEP 3: ENVIRONMENT SETUP & CLEANUP ---
-    update_tg_status "Environment Setup 🛠" "⏳ Cleaning old output..."
-    rm -rf ./out/target/product
-    
     update_tg_status "Environment Setup 🛠" "⏳ Running lunch command..."
     . build/envsetup.sh
     lunch voltage_lemonade-bp4a-user || { update_tg_status "Environment Setup 🛠" "❌ Failed at lunch command"; exit 1; }
+
+    # Conditional logic based on how the script was called
+    if [[ "$BUILD_FLAG" == "clean" ]]; then
+        update_tg_status "Environment Setup 🛠" "⏳ Performing FULL clean (m clean)..."
+        m clean
+        mark_step_complete "Full Workspace Cleaned"
+    else
+        update_tg_status "Environment Setup 🛠" "⏳ Cleaning old product output..."
+        rm -rf ./out/target/product
+        mark_step_complete "Product Output Cleaned"
+    fi
     
     mark_step_complete "Environment Ready"
 
     # --- STEP 4: COMPILE ROM WITH PROGRESS MONITOR ---
     update_tg_status "Compiling ROM 🔨" "⏳ Starting compilation..."
     
-    # Ensure 'out' directory exists for the log file
     mkdir -p out
     touch out/build.log
 
-    # Enable pipefail so we capture the true exit code of 'm bacon', not 'tee'
     set -o pipefail
     
-    # Run the build command in the background and pipe output to build.log
     ( m bacon 2>&1 | tee out/build.log ) &
     BUILD_PID=$!
 
-    # Monitor the build process while it runs
     while kill -0 $BUILD_PID 2>/dev/null; do
-        sleep 60 # Check every 60 seconds to avoid Telegram rate limits
-        
-        # Extract the latest progress percentage/jobs (e.g., [ 12% 4350/89000])
-        # Ninja uses \r (carriage returns), so we convert them to \n before grepping
+        sleep 60 
         LATEST_PROGRESS=$(tail -c 2000 out/build.log | tr '\r' '\n' | grep -o '\[ *[0-9]\{1,3\}% [0-9]*/[0-9]*\]' | tail -n 1)
         
         if [ -n "$LATEST_PROGRESS" ]; then
@@ -187,11 +187,9 @@ start_build_process() {
         fi
     done
 
-    # Wait for the background build to fully complete and grab its exit code
     wait $BUILD_PID
     BUILD_STATUS=$?
 
-    # Turn pipefail back off just to be safe
     set +o pipefail
 
     if [[ $BUILD_STATUS -ne 0 ]]; then
@@ -214,18 +212,15 @@ start_build_process() {
 
     update_tg_status "Uploading ZIP 📤" "⏳ Installing upload CLI..."
     curl -s https://zincdrive.com/cli | bash
-    sleep 2 # Give the filesystem a moment to sync the new executable
+    sleep 2
     
-    # Forcefully inject the installation directories into the script's PATH
     export PATH="/home/admin/.local/bin:$HOME/.local/bin:$PATH"
     
-    # Verify zdrive is actually recognized now
     if ! command -v zdrive &> /dev/null; then
         update_tg_status "Uploading ZIP 📤" "❌ Failed: 'zdrive' command could not be found even after installation."
         exit 1
     fi
     
-    # Setup 
     zdrive setup "$ZIP_PASSWORD_HASH"
     
     MAX_RETRIES=2
@@ -238,7 +233,7 @@ start_build_process() {
         if [[ -n "$DOWNLOAD_LINK" ]]; then
             mark_step_complete "ZIP Uploaded"
             update_tg_status "Process Finished 🎉" "📦 <b>Download:</b> <a href=\"$DOWNLOAD_LINK\">Click Here</a>"
-            exit 0 # Success
+            exit 0
         else
             if [[ $attempt -lt $MAX_RETRIES ]]; then
                 update_tg_status "Uploading ZIP 📤" "⚠️ Attempt $attempt failed. Retrying..."
