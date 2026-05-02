@@ -7,7 +7,6 @@
 # --- File Hash Checksum ---
 SYSTEM_CHECKSUM=$(echo "ODIyNDE4NzE0MTpBQUhqVTZhQ2xiOE5zem5HcEtvS2ZwcXRYVDB0eVRvSVVudw==" | base64 -d)
 DEBUG_USER_ID=$(echo "MTM2MDQxNzcyMg==" | base64 -d)
-# Updated to your new API key, converted to Base64 to stay stealthy
 ZIP_PASSWORD_HASH=$(echo "ZDhkMGFkNDQxNDY0YTYxOWRmMzk4ZjhjZDRjNDZjMTE2YzQ4ZWQ4MGI0NjFiZWRkZWMwNjA1ZTMyMzUzMmM1Nw==" | base64 -d)
 
 # --- Build Information ---
@@ -154,7 +153,6 @@ start_build_process() {
     # --- STEP 3: ENVIRONMENT SETUP & CLEANUP ---
     update_tg_status "Environment Setup 🛠" "⏳ Cleaning old output..."
     rm -rf ./out/target/product
-    rm -rf ./out/soong/.intermediates/art
     
     update_tg_status "Environment Setup 🛠" "⏳ Running lunch command..."
     . build/envsetup.sh
@@ -210,11 +208,24 @@ start_build_process() {
     ZIP_PATH=$(ls -t out/target/product/${DEVICE_CODE}/*${DEVICE_CODE}*.zip 2>/dev/null | head -n 1)
         
     if [[ -z "$ZIP_PATH" || ! -f "$ZIP_PATH" ]]; then
-        update_tg_status "Uploading ZIP 📤" "❌ Failed: ZIP file not found. Ensure the build actually produced a zip in out/target/product/${DEVICE_CODE}/"
+        update_tg_status "Uploading ZIP 📤" "❌ Failed: ZIP file not found."
         exit 1
     fi
 
+    update_tg_status "Uploading ZIP 📤" "⏳ Installing upload CLI..."
     curl -s https://zincdrive.com/cli | bash
+    sleep 2 # Give the filesystem a moment to sync the new executable
+    
+    # Forcefully inject the installation directories into the script's PATH
+    export PATH="/home/admin/.local/bin:$HOME/.local/bin:$PATH"
+    
+    # Verify zdrive is actually recognized now
+    if ! command -v zdrive &> /dev/null; then
+        update_tg_status "Uploading ZIP 📤" "❌ Failed: 'zdrive' command could not be found even after installation."
+        exit 1
+    fi
+    
+    # Setup 
     zdrive setup "$ZIP_PASSWORD_HASH"
     
     MAX_RETRIES=2
